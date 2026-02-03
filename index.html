@@ -1,39 +1,176 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>カウンターアプリ</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 50px;
-    }
-    #count {
-      font-size: 48px;
-      margin: 20px 0;
-    }
-    button {
-      font-size: 18px;
-      padding: 10px 20px;
-      cursor: pointer;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>高知｜歴史・災害・人物マップ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+body { margin:0; font-family:sans-serif; background:#f5f5f5; }
+#header { padding:10px; background:#263238; color:#fff; font-size:14px; }
+#header span { display:block; font-size:12px; opacity:0.9; }
+#map { height:50vh; }
+#timeline { height:40vh; display:flex; gap:12px; padding:12px; overflow-x:auto; }
+.event { min-width:220px; border-radius:12px; padding:10px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); flex-shrink:0; color:#fff; }
+.event.active { outline:3px solid #000; }
+.year { font-weight:bold; font-size:14px; }
+.title { font-size:13px; margin:4px 0; }
+.person { display:flex; align-items:center; gap:8px; margin-top:6px; }
+.person img { width:40px; height:40px; border-radius:50%; object-fit:cover; cursor:pointer; border:2px solid #fff; }
+.person-name { font-size:12px; color:#fff; }
+</style>
 </head>
+
 <body>
 
-  <h1>カウンターアプリ</h1>
-  <div id="count">0</div>
-  <button onclick="increment()">＋1</button>
+<div id="header">
+  📅 年表で「いつ・何が起きたか」
+  <span>🖼 写真で「誰が関わったか」 / 🗺 地図で「どこで起きたか」</span>
+</div>
 
-  <script>
-    let count = 0;
+<div id="map"></div>
+<div id="timeline"></div>
 
-    function increment() {
-      count++;
-      document.getElementById("count").textContent = count;
-    }
-  </script>
+<script>
+const map = L.map("map").setView([33.5597,133.5311],9);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"© OpenStreetMap" }).addTo(map);
+
+let markers = [];
+
+const categoryColor = {
+  history:"#1976d2", // 青
+  disaster:"#d32f2f", // 赤
+  person:"#388e3c" // 緑
+};
+
+// 高知県全域イベントサンプル
+const events = [
+  // 高知市
+  { year:"1601年", title:"山内一豊 入国", category:"history",
+    people:[{ name:"山内一豊", img:"https://upload.wikimedia.org/wikipedia/commons/1/1f/Yamauchi_Kazutoyo.jpg", desc:"土佐藩初代藩主" }],
+    spot:{ lat:33.5606, lng:133.5353, text:"高知城築城" } 
+  },
+  { year:"1836年", title:"坂本龍馬 誕生", category:"person",
+    people:[{ name:"坂本龍馬", img:"https://upload.wikimedia.org/wikipedia/commons/7/7e/Sakamoto_Ryoma.jpg", desc:"幕末の志士" }],
+    spot:{ lat:33.5527, lng:133.5314, text:"坂本龍馬誕生地" } 
+  },
+  // 南国市
+  { year:"1837年", title:"板垣退助 誕生", category:"person",
+    people:[{ name:"板垣退助", img:"https://upload.wikimedia.org/wikipedia/commons/9/97/I_ta_gaki_Taisuke2.jpg", desc:"自由民権運動の指導者" }],
+    spot:{ lat:33.5650, lng:133.6040, text:"南国市の高知城下付近で誕生" } 
+  },
+  // 土佐清水市
+  { year:"1827年", title:"ジョン万次郎（中浜万次郎） 誕生", category:"person",
+    people:[{ name:"ジョン万次郎", img:"https://upload.wikimedia.org/wikipedia/commons/2/25/John_Manjiro.jpg", desc:"幕末の航海者・通訳・日本の海外交流の先駆者" }],
+    spot:{ lat:32.9710, lng:133.0290, text:"土佐清水市で誕生" } 
+  },
+  // 室戸市
+  { year:"1707年", title:"宝永地震・津波", category:"disaster",
+    people:[{ name:"僧・如法", img:"https://upload.wikimedia.org/wikipedia/commons/8/89/Buddhist_monk.png", desc:"津波の被害を記録した僧" }],
+    spot:{ lat:33.2770, lng:134.1813, text:"室戸沿岸部に被害" } 
+  },
+  // 安芸市
+  { year:"1946年", title:"昭和南海地震", category:"disaster",
+    people:[{ name:"高知県民", img:"https://upload.wikimedia.org/wikipedia/commons/6/6f/People_icon.svg", desc:"復興に尽力した人々" }],
+    spot:{ lat:33.7350, lng:133.8950, text:"安芸市周辺で津波被害" } 
+  },
+  // 四万十市
+  { year:"1975年", title:"高知大水害", category:"disaster",
+    people:[{ name:"地域住民", img:"https://upload.wikimedia.org/wikipedia/commons/6/6f/People_icon.svg", desc:"住宅地浸水対応" }],
+    spot:{ lat:33.2750, lng:132.8667, text:"四万十川流域で水害" } 
+  }
+];
+
+const timeline = document.getElementById("timeline");
+
+function clearMarkers(){
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+}
+
+function showPersonDetail(person){
+  const popup = L.popup()
+    .setLatLng(map.getCenter())
+    .setContent(`
+      <div style="text-align:center">
+        <img src="${person.img}" style="width:150px; border-radius:10px;"><br>
+        <b>${person.name}</b><br>
+        <p>${person.desc}</p>
+      </div>
+    `)
+    .openOn(map);
+}
+
+function showEvent(index){
+  clearMarkers();
+  document.querySelectorAll(".event").forEach(e=>e.classList.remove("active"));
+  document.querySelectorAll(".event")[index].classList.add("active");
+
+  const e = events[index];
+  const color = categoryColor[e.category] || "#1976d2";
+
+  const marker = L.circleMarker([e.spot.lat, e.spot.lng], {
+    radius:10,
+    color:color,
+    fillColor:color,
+    fillOpacity:0.9
+  }).addTo(map);
+
+  marker.bindPopup(`
+    <strong>${e.year} ${e.title}</strong><br>
+    ${e.spot.text}<hr>
+    ${e.people.map((p,i)=>`
+      <div class="person-popup" style="margin-top:5px">
+        <img src="${p.img}" width="50" style="border-radius:8px; cursor:pointer;" data-index="${i}"><br>
+        <b>${p.name}</b><br>
+        <small>${p.desc}</small>
+      </div>
+    `).join("")}
+  `).openPopup();
+
+  marker.on("popupopen", ()=>{
+    const imgs = document.querySelectorAll(".person-popup img");
+    imgs.forEach((img, i)=>{
+      img.onclick = ()=>showPersonDetail(e.people[i]);
+    });
+  });
+
+  markers.push(marker);
+}
+
+// タイムライン作成（色分け）
+events.forEach((e,i)=>{
+  const div = document.createElement("div");
+  div.className="event";
+  div.style.background = categoryColor[e.category] || "#1976d2";
+  div.innerHTML=`
+    <div class="year">${e.year}</div>
+    <div class="title">${e.title}</div>
+    ${e.people.map((p,idx)=>`
+      <div class="person">
+        <img src="${p.img}" data-index="${idx}">
+        <div class="person-name">${p.name}</div>
+      </div>
+    `).join("")}
+  `;
+  timeline.appendChild(div);
+
+  div.onclick = ()=>showEvent(i);
+
+  const imgs = div.querySelectorAll("img");
+  imgs.forEach((img, idx)=>{
+    img.onclick = (ev)=>{
+      ev.stopPropagation();
+      showPersonDetail(e.people[idx]);
+    };
+  });
+});
+
+showEvent(0);
+</script>
 
 </body>
 </html>

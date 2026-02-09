@@ -10,25 +10,81 @@
 
 <style>
 body { margin:0; font-family:sans-serif; background:#f5f5f5; }
-#header { padding:10px; background:#263238; color:#fff; font-size:14px; }
-#header span { display:block; font-size:12px; opacity:0.9; }
+
+#header {
+  padding:14px 12px 10px;
+  background:linear-gradient(135deg, #0d47a1, #1976d2);
+  color:#fff;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+}
+.main-title { font-size:20px; font-weight:800; }
+.subtitle { font-size:12px; opacity:0.9; margin-top:4px; }
+
+#legend, #filters {
+  display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;
+}
+.legend-item, .filter-btn {
+  display:flex; align-items:center; gap:6px;
+  background:#fff; color:#1976d2;
+  padding:4px 10px; border-radius:999px;
+  font-size:11px; font-weight:600; cursor:pointer; border:none;
+}
+.legend-item.active, .filter-btn.active {
+  background:#000; color:#fff;
+}
+.legend-color {
+  width:10px; height:10px; border-radius:50%;
+}
+
 #map { height:50vh; }
-#timeline { height:40vh; display:flex; gap:12px; padding:12px; overflow-x:auto; }
-.event { min-width:220px; border-radius:12px; padding:10px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2); flex-shrink:0; color:#fff; }
+
+#timeline {
+  height:40vh; display:flex; gap:12px; padding:12px;
+  overflow-x:auto; background:#fff;
+  border-top-left-radius:16px;
+  border-top-right-radius:16px;
+}
+
+.event {
+  min-width:220px; border-radius:12px; padding:10px;
+  cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2);
+  flex-shrink:0; color:#fff;
+}
 .event.active { outline:3px solid #000; }
 .year { font-weight:bold; font-size:14px; }
 .title { font-size:13px; margin:4px 0; }
-.person { display:flex; align-items:center; gap:8px; margin-top:6px; }
-.person img { width:40px; height:40px; border-radius:50%; object-fit:cover; cursor:pointer; border:2px solid #fff; }
-.person-name { font-size:12px; color:#fff; }
+.person-name { font-size:12px; margin-top:6px; }
 </style>
 </head>
 
 <body>
 
 <div id="header">
-  📅 年表で「いつ・何が起きたか」
-  <span>🖼 写真で「誰が関わったか」 / 🗺 地図で「どこで起きたか」</span>
+  <div class="main-title">高知｜歴史・災害・人物マップ</div>
+  <div class="subtitle">📅 年表 × 🗺 地図で高知の出来事をたどる</div>
+
+  <div id="legend">
+    <div class="legend-item active" data-cat="all">
+      <span class="legend-color" style="background:#000;"></span> すべて
+    </div>
+    <div class="legend-item" data-cat="history">
+      <span class="legend-color" style="background:#1976d2;"></span> 歴史
+    </div>
+    <div class="legend-item" data-cat="disaster">
+      <span class="legend-color" style="background:#d32f2f;"></span> 災害
+    </div>
+    <div class="legend-item" data-cat="person">
+      <span class="legend-color" style="background:#388e3c;"></span> 人物
+    </div>
+  </div>
+
+  <div id="filters">
+    <button class="filter-btn active" data-era="all">すべて</button>
+    <button class="filter-btn" data-era="medieval">戦国〜中世</button>
+    <button class="filter-btn" data-era="edo">江戸</button>
+    <button class="filter-btn" data-era="modern">近代</button>
+    <button class="filter-btn" data-era="contemporary">現代</button>
+  </div>
 </div>
 
 <div id="map"></div>
@@ -37,141 +93,134 @@ body { margin:0; font-family:sans-serif; background:#f5f5f5; }
 <script>
 const map = L.map("map").setView([33.5597,133.5311],9);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:"© OpenStreetMap" }).addTo(map);
-
 let markers = [];
 
-const categoryColor = {
-  history:"#1976d2", // 青
-  disaster:"#d32f2f", // 赤
-  person:"#388e3c" // 緑
-};
+const categoryColor = { history:"#1976d2", disaster:"#d32f2f", person:"#388e3c" };
 
-// 高知県全域イベントサンプル
 const events = [
-  // 高知市
-  { year:"1601年", title:"山内一豊 入国", category:"history",
-    people:[{ name:"山内一豊", img:"https://upload.wikimedia.org/wikipedia/commons/1/1f/Yamauchi_Kazutoyo.jpg", desc:"土佐藩初代藩主" }],
-    spot:{ lat:33.5606, lng:133.5353, text:"高知城築城" } 
-  },
-  { year:"1836年", title:"坂本龍馬 誕生", category:"person",
-    people:[{ name:"坂本龍馬", img:"https://upload.wikimedia.org/wikipedia/commons/7/7e/Sakamoto_Ryoma.jpg", desc:"幕末の志士" }],
-    spot:{ lat:33.5527, lng:133.5314, text:"坂本龍馬誕生地" } 
-  },
-  // 南国市
-  { year:"1837年", title:"板垣退助 誕生", category:"person",
-    people:[{ name:"板垣退助", img:"https://upload.wikimedia.org/wikipedia/commons/9/97/I_ta_gaki_Taisuke2.jpg", desc:"自由民権運動の指導者" }],
-    spot:{ lat:33.5650, lng:133.6040, text:"南国市の高知城下付近で誕生" } 
-  },
-  // 土佐清水市
-  { year:"1827年", title:"ジョン万次郎（中浜万次郎） 誕生", category:"person",
-    people:[{ name:"ジョン万次郎", img:"https://upload.wikimedia.org/wikipedia/commons/2/25/John_Manjiro.jpg", desc:"幕末の航海者・通訳・日本の海外交流の先駆者" }],
-    spot:{ lat:32.9710, lng:133.0290, text:"土佐清水市で誕生" } 
-  },
-  // 室戸市
-  { year:"1707年", title:"宝永地震・津波", category:"disaster",
-    people:[{ name:"僧・如法", img:"https://upload.wikimedia.org/wikipedia/commons/8/89/Buddhist_monk.png", desc:"津波の被害を記録した僧" }],
-    spot:{ lat:33.2770, lng:134.1813, text:"室戸沿岸部に被害" } 
-  },
-  // 安芸市
-  { year:"1946年", title:"昭和南海地震", category:"disaster",
-    people:[{ name:"高知県民", img:"https://upload.wikimedia.org/wikipedia/commons/6/6f/People_icon.svg", desc:"復興に尽力した人々" }],
-    spot:{ lat:33.7350, lng:133.8950, text:"安芸市周辺で津波被害" } 
-  },
-  // 四万十市
-  { year:"1975年", title:"高知大水害", category:"disaster",
-    people:[{ name:"地域住民", img:"https://upload.wikimedia.org/wikipedia/commons/6/6f/People_icon.svg", desc:"住宅地浸水対応" }],
-    spot:{ lat:33.2750, lng:132.8667, text:"四万十川流域で水害" } 
-  }
+  { era:"medieval", category:"history", year:"12世紀末", title:"長宗我部氏の台頭",
+    detail:"土佐国の在地勢力として長宗我部氏が台頭し、後の土佐統一の基盤が形づくられた。",
+    people:["長宗我部氏"], spot:{ lat:33.5660, lng:133.6020, text:"岡豊城（南国市）" } },
+
+  { era:"medieval", category:"history", year:"1575年", title:"長宗我部元親、土佐統一",
+    detail:"長宗我部元親が土佐国内の諸勢力を制圧し、戦国大名としての支配体制を確立した。",
+    people:["長宗我部元親"], spot:{ lat:33.5660, lng:133.6020, text:"岡豊城跡" } },
+
+  { era:"edo", category:"history", year:"1601年", title:"山内一豊 入国",
+    detail:"関ヶ原の戦いの功績により土佐一国を拝領。高知城の築城と城下町整備が進んだ。",
+    people:["山内一豊"], spot:{ lat:33.5606, lng:133.5353, text:"高知城" } },
+
+  { era:"edo", category:"disaster", year:"1707年", title:"宝永地震・津波",
+    detail:"南海トラフ巨大地震の一つ。沿岸部を中心に大きな被害が出た。",
+    people:["記録を残した僧"], spot:{ lat:33.2770, lng:134.1813, text:"室戸沿岸部" } },
+
+  { era:"modern", category:"person", year:"1827年", title:"ジョン万次郎 誕生",
+    detail:"漂流をきっかけに渡米し、西洋の知識や文化を日本にもたらした。",
+    people:["ジョン万次郎"], spot:{ lat:32.9710, lng:133.0290, text:"土佐清水市" } },
+
+  { era:"modern", category:"person", year:"1836年", title:"坂本龍馬 誕生",
+    detail:"薩長同盟の仲介などを行い、明治維新の流れをつくった。",
+    people:["坂本龍馬"], spot:{ lat:33.5527, lng:133.5314, text:"高知市" } },
+
+  { era:"modern", category:"person", year:"1837年", title:"板垣退助 誕生",
+    detail:"自由民権運動を主導し、日本の議会政治の礎を築いた。",
+    people:["板垣退助"], spot:{ lat:33.5650, lng:133.6040, text:"南国市" } },
+
+  { era:"contemporary", category:"disaster", year:"1946年", title:"昭和南海地震",
+    detail:"津波により沿岸部で被害。戦後復興と重なり大きな困難となった。",
+    people:["高知県民"], spot:{ lat:33.7350, lng:133.8950, text:"安芸市周辺" } },
+
+  { era:"contemporary", category:"disaster", year:"1975年", title:"高知大水害",
+    detail:"四万十川流域を中心に広範囲で浸水被害が発生した。",
+    people:["地域住民"], spot:{ lat:33.2750, lng:132.8667, text:"四万十川流域" } },
+
+  { era:"contemporary", category:"disaster", year:"1998年", title:"高知豪雨災害",
+    detail:"集中豪雨により土砂災害や河川氾濫が発生した。",
+    people:["地域住民"], spot:{ lat:33.5597, lng:133.5311, text:"高知市周辺" } },
+
+  { era:"contemporary", category:"disaster", year:"2011年", title:"防災意識の高まり",
+    detail:"東日本大震災を受け、南海トラフ地震への備えが強化された。",
+    people:["高知県民"], spot:{ lat:33.5597, lng:133.5311, text:"県内各地" } }
 ];
 
 const timeline = document.getElementById("timeline");
+let currentEra = "all";
+let currentCat = "all";
 
 function clearMarkers(){
   markers.forEach(m => map.removeLayer(m));
   markers = [];
 }
 
-function showPersonDetail(person){
-  const popup = L.popup()
-    .setLatLng(map.getCenter())
-    .setContent(`
-      <div style="text-align:center">
-        <img src="${person.img}" style="width:150px; border-radius:10px;"><br>
-        <b>${person.name}</b><br>
-        <p>${person.desc}</p>
-      </div>
-    `)
-    .openOn(map);
-}
-
-function showEvent(index){
+function showEvent(list, index){
   clearMarkers();
   document.querySelectorAll(".event").forEach(e=>e.classList.remove("active"));
   document.querySelectorAll(".event")[index].classList.add("active");
 
-  const e = events[index];
-  const color = categoryColor[e.category] || "#1976d2";
+  const e = list[index];
+  map.setView([e.spot.lat, e.spot.lng], 11, { animate:true, duration:0.5 });
 
+  const color = categoryColor[e.category] || "#1976d2";
   const marker = L.circleMarker([e.spot.lat, e.spot.lng], {
-    radius:10,
-    color:color,
-    fillColor:color,
-    fillOpacity:0.9
+    radius:10, color:color, fillColor:color, fillOpacity:0.9
   }).addTo(map);
 
   marker.bindPopup(`
     <strong>${e.year} ${e.title}</strong><br>
-    ${e.spot.text}<hr>
-    ${e.people.map((p,i)=>`
-      <div class="person-popup" style="margin-top:5px">
-        <img src="${p.img}" width="50" style="border-radius:8px; cursor:pointer;" data-index="${i}"><br>
-        <b>${p.name}</b><br>
-        <small>${p.desc}</small>
-      </div>
-    `).join("")}
+    <small>${e.spot.text}</small>
+    <p style="font-size:12px; line-height:1.5; margin:6px 0;">${e.detail}</p>
+    <hr>
+    ${e.people.map(p=>`<div>👤 ${p}</div>`).join("")}
   `).openPopup();
-
-  marker.on("popupopen", ()=>{
-    const imgs = document.querySelectorAll(".person-popup img");
-    imgs.forEach((img, i)=>{
-      img.onclick = ()=>showPersonDetail(e.people[i]);
-    });
-  });
 
   markers.push(marker);
 }
 
-// タイムライン作成（色分け）
-events.forEach((e,i)=>{
-  const div = document.createElement("div");
-  div.className="event";
-  div.style.background = categoryColor[e.category] || "#1976d2";
-  div.innerHTML=`
-    <div class="year">${e.year}</div>
-    <div class="title">${e.title}</div>
-    ${e.people.map((p,idx)=>`
-      <div class="person">
-        <img src="${p.img}" data-index="${idx}">
-        <div class="person-name">${p.name}</div>
-      </div>
-    `).join("")}
-  `;
-  timeline.appendChild(div);
+function renderTimeline(){
+  timeline.innerHTML="";
+  clearMarkers();
 
-  div.onclick = ()=>showEvent(i);
+  let filtered = events.filter(e =>
+    (currentEra==="all" || e.era===currentEra) &&
+    (currentCat==="all" || e.category===currentCat)
+  );
 
-  const imgs = div.querySelectorAll("img");
-  imgs.forEach((img, idx)=>{
-    img.onclick = (ev)=>{
-      ev.stopPropagation();
-      showPersonDetail(e.people[idx]);
-    };
+  filtered.forEach((e,i)=>{
+    const div = document.createElement("div");
+    div.className="event";
+    div.style.background = categoryColor[e.category];
+    div.innerHTML = `
+      <div class="year">${e.year}</div>
+      <div class="title">${e.title}</div>
+      ${e.people.map(p=>`<div class="person-name">👤 ${p}</div>`).join("")}
+    `;
+    div.onclick = ()=>showEvent(filtered, i);
+    timeline.appendChild(div);
   });
+
+  if(filtered.length) showEvent(filtered,0);
+}
+
+document.querySelectorAll(".filter-btn").forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    currentEra = btn.dataset.era;
+    renderTimeline();
+  };
 });
 
-showEvent(0);
+document.querySelectorAll(".legend-item").forEach(item=>{
+  item.onclick = ()=>{
+    document.querySelectorAll(".legend-item").forEach(i=>i.classList.remove("active"));
+    item.classList.add("active");
+    currentCat = item.dataset.cat;
+    renderTimeline();
+  };
+});
+
+renderTimeline();
 </script>
 
 </body>
 </html>
-
